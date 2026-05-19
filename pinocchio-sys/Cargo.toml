@@ -1,0 +1,20 @@
+[package]
+name = "pinocchio-sys"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Low-level FFI bindings to the Pinocchio C++ rigid body dynamics library."
+links = "pinocchio"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+cxx = { workspace = true }
+
+[build-dependencies]
+cxx-build = { workspace = true }
+pkg-config = { workspace = true }

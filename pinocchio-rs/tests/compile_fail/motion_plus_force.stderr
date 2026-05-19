@@ -1,0 +1,7 @@
+error[E0308]: mismatched types
+  --> tests/compile_fail/motion_plus_force.rs:13:20
+   |
+13 |     let _bad = m + f;
+   |                -   ^ expected `Motion`, found `Force`
+   |                |
+   |                expected because this is `Motion`

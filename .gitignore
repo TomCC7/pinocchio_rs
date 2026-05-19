@@ -1,0 +1,17 @@
+# Rust
+/target
+Cargo.lock
+**/*.rs.bk
+
+# pixi (env is reproduced from pixi.lock)
+.pixi/
+
+# CMake build dirs for gen_goldens
+/tools/gen_goldens/build/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+.claude/

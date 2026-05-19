@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "pinocchio-sys",
+    "pinocchio-rs",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.75"
+license = "BSD-2-Clause"
+repository = "https://github.com/playercc7/pinocchio_rs"
+authors = ["pinocchio_rs contributors"]
+
+[workspace.dependencies]
+cxx = "1.0"
+cxx-build = "1.0"
+pkg-config = "0.3"
+nalgebra = "0.33"
+thiserror = "1"
