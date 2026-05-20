@@ -27,12 +27,18 @@ sysroot_linux-64 = "*"
 
 [tasks]
 # Cargo passthrough — `pixi run cargo ...` works from any clean clone.
+# Inside `pixi run`, PKG_CONFIG_PATH is already pinned to the pixi env so
+# the passthrough's first-probe succeeds against the pixi-managed Pinocchio
+# without needing the `bundled-pixi` feature flag explicitly.
 cargo = "cargo"
 
 # Single command builds the C++ oracle and emits goldens (see §13 of tasks.md).
 gen-goldens = { cmd = "bash scripts/gen-goldens.sh" }
 
-# Build / test convenience aliases.
-build = "cargo build --workspace"
-test = "cargo test --workspace"
+# Build / test convenience aliases. These pin `--features pinocchio-sys/bundled-pixi`
+# so that even when a contributor has a stale system Pinocchio also discoverable
+# via PKG_CONFIG_PATH, the pixi-managed copy still wins discovery (matches
+# design DD7).
+build = "cargo build --workspace --features pinocchio-sys/bundled-pixi"
+test = "cargo test --workspace --features pinocchio-sys/bundled-pixi"
 check-env = "bash scripts/check-env.sh"

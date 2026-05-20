@@ -11,6 +11,13 @@ description = "Safe Rust bindings to the Pinocchio C++ rigid body dynamics libra
 [lib]
 path = "src/lib.rs"
 
+[features]
+# Pass-through to pinocchio-sys. See that crate's rustdoc for semantics.
+default = []
+bundled-pixi = ["pinocchio-sys/bundled-pixi"]
+system = ["pinocchio-sys/system"]
+docs-only = ["pinocchio-sys/docs-only"]
+
 [dependencies]
 pinocchio-sys = { path = "../pinocchio-sys", version = "0.0.1" }
 cxx = { workspace = true }
@@ -22,3 +29,7 @@ approx = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 trybuild = "1"
+
+[package.metadata.docs.rs]
+no-default-features = true
+features = ["docs-only"]

@@ -25,6 +25,8 @@ cmake --build "${BUILD_DIR}" --parallel >/dev/null
 expected_files=(
     fk_panda.json rnea_panda.json aba_panda.json crba_panda.json
     jac_panda.json se3_ops.json lie_ops.json fk_derivs_panda.json
+    rnea_derivs_panda.json aba_derivs_panda.json
+    frame_kinematics_derivs_panda.json
 )
 for f in "${expected_files[@]}"; do
     if [[ ! -f "${TMP1}/${f}" ]]; then
@@ -37,4 +39,4 @@ for f in "${expected_files[@]}"; do
     fi
 done
 
-echo "goldens reproducibility check: OK (8/8 files byte-identical)"
+echo "goldens reproducibility check: OK (${#expected_files[@]}/${#expected_files[@]} files byte-identical)"

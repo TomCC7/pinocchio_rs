@@ -12,13 +12,16 @@
 #include <pinocchio/spatial/explog.hpp>
 
 #include <pinocchio/algorithm/aba.hpp>
+#include <pinocchio/algorithm/aba-derivatives.hpp>
 #include <pinocchio/algorithm/crba.hpp>
 #include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/frames-derivatives.hpp>
 #include <pinocchio/algorithm/jacobian.hpp>
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
 #include <pinocchio/algorithm/kinematics-derivatives.hpp>
 #include <pinocchio/algorithm/rnea.hpp>
+#include <pinocchio/algorithm/rnea-derivatives.hpp>
 
 #include <Eigen/Core>
 
@@ -375,6 +378,123 @@ void emit_derivs(const std::string& outdir, const Model& model) {
     write_file(outdir + "/fk_derivs_panda.json", j.str());
 }
 
+// ---- new derivative streams ----
+
+void emit_rnea_derivs(const std::string& outdir, const Model& model) {
+    Data data(model);
+    std::mt19937 rng(SEED ^ 0xF9u);
+    Json j;
+    constexpr std::size_t N = 50;
+    write_envelope_header(j, N);
+    for (std::size_t s = 0; s < N; ++s) {
+        const auto q = sample_q(model, rng);
+        const auto v = sample_small(model.nv, rng);
+        const auto a = sample_small(model.nv, rng);
+        pinocchio::computeRNEADerivatives(model, data, q, v, a);
+        // data.dtau_dq / data.dtau_dv are `RowMatrixXs` (row-major). Convert
+        // to column-major to match the file's documented storage order.
+        const Eigen::MatrixXd dtau_dq_col = data.dtau_dq;
+        const Eigen::MatrixXd dtau_dv_col = data.dtau_dv;
+        j.next_arr_elem();
+        j.begin_obj();
+        j.key("q"); j.write_eigen(q);
+        j.key("v"); j.write_eigen(v);
+        j.key("a"); j.write_eigen(a);
+        j.key("dtau_dq"); j.write_eigen(dtau_dq_col);
+        j.key("dtau_dv"); j.write_eigen(dtau_dv_col);
+        j.end_obj();
+    }
+    write_envelope_footer(j);
+    write_file(outdir + "/rnea_derivs_panda.json", j.str());
+}
+
+void emit_aba_derivs(const std::string& outdir, const Model& model) {
+    Data data(model);
+    std::mt19937 rng(SEED ^ 0xFAu);
+    Json j;
+    constexpr std::size_t N = 50;
+    write_envelope_header(j, N);
+    for (std::size_t s = 0; s < N; ++s) {
+        const auto q = sample_q(model, rng);
+        const auto v = sample_small(model.nv, rng);
+        const auto tau = sample_small(model.nv, rng);
+        pinocchio::computeABADerivatives(model, data, q, v, tau);
+        // Same RowMatrixXs → MatrixXs conversion as in emit_rnea_derivs.
+        const Eigen::MatrixXd ddq_dq_col = data.ddq_dq;
+        const Eigen::MatrixXd ddq_dv_col = data.ddq_dv;
+        j.next_arr_elem();
+        j.begin_obj();
+        j.key("q"); j.write_eigen(q);
+        j.key("v"); j.write_eigen(v);
+        j.key("tau"); j.write_eigen(tau);
+        j.key("dddq_dq"); j.write_eigen(ddq_dq_col);
+        j.key("dddq_dv"); j.write_eigen(ddq_dv_col);
+        j.end_obj();
+    }
+    write_envelope_footer(j);
+    write_file(outdir + "/aba_derivs_panda.json", j.str());
+}
+
+void emit_frame_kinematics_derivs(const std::string& outdir, const Model& model) {
+    Data data(model);
+    std::mt19937 rng(SEED ^ 0xFBu);
+    Json j;
+    constexpr std::size_t N = 50;
+    write_envelope_header(j, N);
+
+    // Cycle through a small set of frame ids (mid-chain, late-chain, tool).
+    const std::vector<std::string> frame_names = {
+        "panda_link3", "panda_link5", "panda_hand",
+    };
+    std::vector<std::size_t> frame_ids;
+    frame_ids.reserve(frame_names.size());
+    for (const auto& n : frame_names) {
+        frame_ids.push_back(model.getFrameId(n));
+    }
+
+    for (std::size_t s = 0; s < N; ++s) {
+        const auto q = sample_q(model, rng);
+        const auto v = sample_small(model.nv, rng);
+        const auto a = sample_small(model.nv, rng);
+        pinocchio::computeForwardKinematicsDerivatives(model, data, q, v, a);
+
+        const int rf_int = static_cast<int>(s % 3);
+        const pinocchio::ReferenceFrame rf =
+            (rf_int == 0) ? pinocchio::WORLD :
+            (rf_int == 1) ? pinocchio::LOCAL : pinocchio::LOCAL_WORLD_ALIGNED;
+        const std::size_t frame_id = frame_ids[s % frame_ids.size()];
+
+        Eigen::MatrixXd dv_dq = Eigen::MatrixXd::Zero(6, model.nv);
+        Eigen::MatrixXd dv_dv = Eigen::MatrixXd::Zero(6, model.nv);
+        pinocchio::getFrameVelocityDerivatives(
+            model, data, frame_id, rf, dv_dq, dv_dv);
+
+        Eigen::MatrixXd v_partial_dq = Eigen::MatrixXd::Zero(6, model.nv);
+        Eigen::MatrixXd da_dq = Eigen::MatrixXd::Zero(6, model.nv);
+        Eigen::MatrixXd da_dv = Eigen::MatrixXd::Zero(6, model.nv);
+        Eigen::MatrixXd da_da = Eigen::MatrixXd::Zero(6, model.nv);
+        pinocchio::getFrameAccelerationDerivatives(
+            model, data, frame_id, rf,
+            v_partial_dq, da_dq, da_dv, da_da);
+
+        j.next_arr_elem();
+        j.begin_obj();
+        j.key("q"); j.write_eigen(q);
+        j.key("v"); j.write_eigen(v);
+        j.key("a"); j.write_eigen(a);
+        j.key("frame_id"); j.write_int(static_cast<long long>(frame_id));
+        j.key("rf"); j.write_int(rf_int);
+        j.key("dv_dq"); j.write_eigen(dv_dq);
+        j.key("dv_dv"); j.write_eigen(dv_dv);
+        j.key("da_dq"); j.write_eigen(da_dq);
+        j.key("da_dv"); j.write_eigen(da_dv);
+        j.key("da_da"); j.write_eigen(da_da);
+        j.end_obj();
+    }
+    write_envelope_footer(j);
+    write_file(outdir + "/frame_kinematics_derivs_panda.json", j.str());
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -402,7 +522,10 @@ int main(int argc, char** argv) {
     emit_se3(outdir);
     emit_lie(outdir, model);
     emit_derivs(outdir, model);
+    emit_rnea_derivs(outdir, model);
+    emit_aba_derivs(outdir, model);
+    emit_frame_kinematics_derivs(outdir, model);
 
-    std::printf("gen_goldens: wrote 8 JSON files under %s/\n", outdir.c_str());
+    std::printf("gen_goldens: wrote 11 JSON files under %s/\n", outdir.c_str());
     return 0;
 }

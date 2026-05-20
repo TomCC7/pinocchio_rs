@@ -10,13 +10,16 @@
 #include <pinocchio/spatial/se3.hpp>
 
 #include <pinocchio/algorithm/aba.hpp>
+#include <pinocchio/algorithm/aba-derivatives.hpp>
 #include <pinocchio/algorithm/crba.hpp>
 #include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/frames-derivatives.hpp>
 #include <pinocchio/algorithm/jacobian.hpp>
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
 #include <pinocchio/algorithm/kinematics-derivatives.hpp>
 #include <pinocchio/algorithm/rnea.hpp>
+#include <pinocchio/algorithm/rnea-derivatives.hpp>
 
 #include <Eigen/Core>
 
@@ -352,6 +355,119 @@ void data_joint_velocity_derivatives(const Model& model, Data& data,
     MatXMapMut out_dv{dv_dv, 6, static_cast<Eigen::Index>(nv)};
     out_dq = partial_dq;
     out_dv = partial_dv;
+}
+
+// ------- RNEA derivatives -------
+void compute_rnea_derivatives(const Model& model, Data& data,
+                              const double* q_ptr, std::size_t nq,
+                              const double* v_ptr, std::size_t nv,
+                              const double* a_ptr, std::size_t nv_a) {
+    VecXMap q{q_ptr, static_cast<Eigen::Index>(nq)};
+    VecXMap v{v_ptr, static_cast<Eigen::Index>(nv)};
+    VecXMap a{a_ptr, static_cast<Eigen::Index>(nv_a)};
+    ::pinocchio::computeRNEADerivatives(model, data, q, v, a);
+}
+
+void data_rnea_derivatives(const Data& data,
+                           double* dtau_dq, double* dtau_dv,
+                           std::size_t nv) {
+    const Eigen::Index n = static_cast<Eigen::Index>(nv);
+    MatXMapMut out_dq{dtau_dq, n, n};
+    MatXMapMut out_dv{dtau_dv, n, n};
+    out_dq = data.dtau_dq;
+    out_dv = data.dtau_dv;
+}
+
+// ------- ABA derivatives -------
+void compute_aba_derivatives(const Model& model, Data& data,
+                             const double* q_ptr, std::size_t nq,
+                             const double* v_ptr, std::size_t nv,
+                             const double* tau_ptr, std::size_t nv_tau) {
+    VecXMap q{q_ptr, static_cast<Eigen::Index>(nq)};
+    VecXMap v{v_ptr, static_cast<Eigen::Index>(nv)};
+    VecXMap tau{tau_ptr, static_cast<Eigen::Index>(nv_tau)};
+    ::pinocchio::computeABADerivatives(model, data, q, v, tau);
+}
+
+void data_aba_derivatives(const Data& data,
+                          double* dddq_dq, double* dddq_dv,
+                          std::size_t nv) {
+    const Eigen::Index n = static_cast<Eigen::Index>(nv);
+    MatXMapMut out_dq{dddq_dq, n, n};
+    MatXMapMut out_dv{dddq_dv, n, n};
+    out_dq = data.ddq_dq;
+    out_dv = data.ddq_dv;
+}
+
+// ------- Joint-acceleration derivatives -------
+void data_joint_acceleration_derivatives(const Model& model, Data& data,
+                                         std::size_t joint_id, std::uint8_t rf,
+                                         double* da_dq, double* da_dv,
+                                         double* da_da,
+                                         std::size_t nv) {
+    const Eigen::Index n = static_cast<Eigen::Index>(nv);
+    ::pinocchio::Data::Matrix6x v_partial_dq(6, n);
+    ::pinocchio::Data::Matrix6x a_partial_dq(6, n);
+    ::pinocchio::Data::Matrix6x a_partial_dv(6, n);
+    ::pinocchio::Data::Matrix6x a_partial_da(6, n);
+    v_partial_dq.setZero();
+    a_partial_dq.setZero();
+    a_partial_dv.setZero();
+    a_partial_da.setZero();
+    ::pinocchio::getJointAccelerationDerivatives(
+        model, data, joint_id, to_pin_rf(rf),
+        v_partial_dq, a_partial_dq, a_partial_dv, a_partial_da);
+    MatXMapMut o_dq{da_dq, 6, n};
+    MatXMapMut o_dv{da_dv, 6, n};
+    MatXMapMut o_da{da_da, 6, n};
+    o_dq = a_partial_dq;
+    o_dv = a_partial_dv;
+    o_da = a_partial_da;
+}
+
+// ------- Frame-velocity derivatives -------
+void data_frame_velocity_derivatives(const Model& model, Data& data,
+                                     std::size_t frame_id, std::uint8_t rf,
+                                     double* dv_dq, double* dv_dv,
+                                     std::size_t nv) {
+    const Eigen::Index n = static_cast<Eigen::Index>(nv);
+    ::pinocchio::Data::Matrix6x v_partial_dq(6, n);
+    ::pinocchio::Data::Matrix6x v_partial_dv(6, n);
+    v_partial_dq.setZero();
+    v_partial_dv.setZero();
+    ::pinocchio::getFrameVelocityDerivatives(
+        model, data, frame_id, to_pin_rf(rf),
+        v_partial_dq, v_partial_dv);
+    MatXMapMut o_dq{dv_dq, 6, n};
+    MatXMapMut o_dv{dv_dv, 6, n};
+    o_dq = v_partial_dq;
+    o_dv = v_partial_dv;
+}
+
+// ------- Frame-acceleration derivatives -------
+void data_frame_acceleration_derivatives(const Model& model, Data& data,
+                                         std::size_t frame_id, std::uint8_t rf,
+                                         double* da_dq, double* da_dv,
+                                         double* da_da,
+                                         std::size_t nv) {
+    const Eigen::Index n = static_cast<Eigen::Index>(nv);
+    ::pinocchio::Data::Matrix6x v_partial_dq(6, n);
+    ::pinocchio::Data::Matrix6x a_partial_dq(6, n);
+    ::pinocchio::Data::Matrix6x a_partial_dv(6, n);
+    ::pinocchio::Data::Matrix6x a_partial_da(6, n);
+    v_partial_dq.setZero();
+    a_partial_dq.setZero();
+    a_partial_dv.setZero();
+    a_partial_da.setZero();
+    ::pinocchio::getFrameAccelerationDerivatives(
+        model, data, frame_id, to_pin_rf(rf),
+        v_partial_dq, a_partial_dq, a_partial_dv, a_partial_da);
+    MatXMapMut o_dq{da_dq, 6, n};
+    MatXMapMut o_dv{da_dv, 6, n};
+    MatXMapMut o_da{da_da, 6, n};
+    o_dq = a_partial_dq;
+    o_dv = a_partial_dv;
+    o_da = a_partial_da;
 }
 
 }  // namespace pinocchio_rs::shim
