@@ -48,7 +48,7 @@ jobs:
           done
 
       - name: GATE.13 — golden reproducibility
-        run: bash scripts/test-goldens-reproducible.sh
+        run: pixi run test-goldens-reproducible
 
       - name: GATE.14 — full parity suite
         run: pixi run cargo test -p pinocchio-rs --tests --features pinocchio-sys/bundled-pixi

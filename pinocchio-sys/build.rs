@@ -72,6 +72,21 @@ fn main() {
 
     emit_found_diagnostic(&pinocchio);
 
+    // pkg-config's `cargo_metadata(true)` emits `rustc-link-search` so the
+    // *linker* finds libpinocchio.so / .dylib, but it does NOT emit an rpath,
+    // which is what the dynamic loader needs at *runtime*. Linux happens to
+    // work inside `pixi run` because pixi activation sets LD_LIBRARY_PATH;
+    // macOS does not honor LD_LIBRARY_PATH and dyld instead looks at the
+    // binary's embedded rpath list. Without this we get
+    // `dyld: Library not loaded: @rpath/libpinocchio_default.dylib`
+    // when running `cargo test` (or any built artifact) on macOS, and the
+    // same class of failure on Linux outside a pixi-activated shell. Mirror
+    // Pinocchio's own `pinocchio.pc` link dir into the binary so it works
+    // regardless of how the host env is set up.
+    for link_path in pinocchio.link_paths.iter().chain(eigen.link_paths.iter()) {
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", link_path.display());
+    }
+
     let mut build = cxx_build::bridge("src/lib.rs");
     build
         .file("shim/pinocchio_shim.cpp")

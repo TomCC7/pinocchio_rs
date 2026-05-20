@@ -34,6 +34,11 @@ cargo = "cargo"
 
 # Single command builds the C++ oracle and emits goldens (see §13 of tasks.md).
 gen-goldens = { cmd = "bash scripts/gen-goldens.sh" }
+# Reproducibility check used by CI. Both this task and the script invoke
+# `cmake` and the freshly built `gen_goldens` binary, which need the pixi
+# env's pkg-config search path and dynamic linker hints — running it via
+# `pixi run` (or this task) is the supported entrypoint.
+test-goldens-reproducible = { cmd = "bash scripts/test-goldens-reproducible.sh" }
 
 # Build / test convenience aliases. These pin `--features pinocchio-sys/bundled-pixi`
 # so that even when a contributor has a stale system Pinocchio also discoverable
