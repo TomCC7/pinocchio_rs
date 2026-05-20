@@ -12,9 +12,27 @@ links = "pinocchio"
 [lib]
 path = "src/lib.rs"
 
+[features]
+# All three steer build-time Pinocchio discovery — none change the runtime
+# API. See build.rs and the crate-level rustdoc for semantics.
+default = []
+# Force the pixi env to win discovery even when a system Pinocchio is also
+# installed. Set by pixi.toml's cargo tasks; rarely useful directly.
+bundled-pixi = []
+# Disable pixi auto-discovery entirely; only PKG_CONFIG_PATH as the user set
+# it is consulted. Used by the system-install CI lane and ROS / brew users.
+system = []
+# Skip native compilation; pinocchio-sys exposes stub function bodies that
+# `unimplemented!()` on call. Only useful for docs.rs.
+docs-only = []
+
 [dependencies]
 cxx = { workspace = true }
 
 [build-dependencies]
 cxx-build = { workspace = true }
 pkg-config = { workspace = true }
+
+[package.metadata.docs.rs]
+no-default-features = true
+features = ["docs-only"]

@@ -5,7 +5,8 @@ on:
   pull_request:
 
 jobs:
-  linux:
+  pixi-ubuntu:
+    name: pixi-ubuntu (gating)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -28,34 +29,136 @@ jobs:
         run: |
           pixi install
           pixi run check-env
-          pixi run cargo check --workspace
+          pixi run cargo check --workspace --features pinocchio-sys/bundled-pixi
 
       - name: GATE.2 — pinocchio-sys FFI
-        run: pixi run cargo test -p pinocchio-sys
+        run: pixi run cargo test -p pinocchio-sys --features pinocchio-sys/bundled-pixi
 
       - name: GATE.3 / GATE.4 / GATE.5–12 — safe wrappers
-        run: pixi run cargo test -p pinocchio-rs --lib
+        run: pixi run cargo test -p pinocchio-rs --lib --features pinocchio-sys/bundled-pixi
 
       - name: GATE.11 — IK convergence
-        run: pixi run cargo test -p pinocchio-rs --test ik_convergence
+        run: pixi run cargo test -p pinocchio-rs --test ik_convergence --features pinocchio-sys/bundled-pixi
 
       - name: Examples
         run: |
           for ex in overview_simple overview_urdf overview_se3 overview_lie \
                     inverse_dynamics inverse_kinematics kinematics_derivatives; do
-            pixi run cargo run --example "$ex"
+            pixi run cargo run --example "$ex" --features pinocchio-sys/bundled-pixi
           done
 
       - name: GATE.13 — golden reproducibility
-        run: bash scripts/test-goldens-reproducible.sh
+        run: pixi run test-goldens-reproducible
 
       - name: GATE.14 — full parity suite
-        run: pixi run cargo test -p pinocchio-rs --tests
+        run: pixi run cargo test -p pinocchio-rs --tests --features pinocchio-sys/bundled-pixi
 
       - name: GATE.4d — compile-fail
-        run: pixi run cargo test -p pinocchio-rs --test compile_fail
+        run: pixi run cargo test -p pinocchio-rs --test compile_fail --features pinocchio-sys/bundled-pixi
 
       - name: GATE.15 — rustdoc warning-free
-        run: pixi run cargo doc --workspace --no-deps
+        run: pixi run cargo doc --workspace --no-deps --features pinocchio-sys/bundled-pixi
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+      - name: Build-probe shell test (UT.2b)
+        run: bash scripts/test-build-probe.sh
+
+  pixi-macos:
+    name: pixi-macos (non-gating)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pixi
+        uses: prefix-dev/setup-pixi@v0.9.1
+        with:
+          pixi-version: v0.67.2
+          cache: true
+
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'pixi.lock') }}
+          restore-keys: cargo-target-${{ runner.os }}-
+
+      - name: Install + build + lib tests
+        run: |
+          pixi install
+          pixi run cargo build --workspace --features pinocchio-sys/bundled-pixi
+          pixi run cargo test -p pinocchio-sys --features pinocchio-sys/bundled-pixi
+          pixi run cargo test -p pinocchio-rs --lib --features pinocchio-sys/bundled-pixi
+
+      - name: Smoke parity (FK only)
+        run: pixi run cargo test -p pinocchio-rs --test parity_fk --features pinocchio-sys/bundled-pixi
+
+  system-ubuntu:
+    name: system-ubuntu (non-gating)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-target-system-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-target-system-${{ runner.os }}-
+
+      - name: Install Pinocchio via robotpkg (system-wide)
+        run: |
+          sudo apt update
+          sudo apt install -y curl gnupg lsb-release pkg-config libeigen3-dev cmake
+          UBUNTU_CODENAME="$(lsb_release -cs)"
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL http://robotpkg.openrobots.org/packages/debian/robotpkg.asc \
+            | sudo gpg --dearmor -o /etc/apt/keyrings/robotpkg.gpg
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/robotpkg.gpg] \
+                http://robotpkg.openrobots.org/packages/debian/pub ${UBUNTU_CODENAME} robotpkg" \
+            | sudo tee /etc/apt/sources.list.d/robotpkg.list
+          sudo apt update
+          sudo apt install -y robotpkg-pinocchio robotpkg-py3*-pinocchio || \
+            sudo apt install -y robotpkg-pinocchio
+
+      - name: Build + lib tests (system-install path, --features system)
+        env:
+          # robotpkg installs under /opt/openrobots
+          PKG_CONFIG_PATH: /opt/openrobots/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig
+          LD_LIBRARY_PATH: /opt/openrobots/lib
+        run: |
+          pkg-config --modversion pinocchio
+          cargo build --workspace --features pinocchio-sys/system
+          cargo test -p pinocchio-sys --features pinocchio-sys/system
+          cargo test -p pinocchio-rs --lib --features pinocchio-sys/system
+
+  cargo-doc-docs-only:
+    name: cargo-doc-docs-only (gating, hermetic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo target
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-target-docs-only-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-target-docs-only-${{ runner.os }}-
+
+      # Intentionally no Pinocchio, no pkg-config setup, no C++ toolchain
+      # beyond what stable Rust drags in. Proves docs.rs build is hermetic.
+      - name: cargo doc (workspace, docs-only)
+        run: cargo doc --workspace --features docs-only --no-default-features --no-deps
         env:
           RUSTDOCFLAGS: "-D warnings"

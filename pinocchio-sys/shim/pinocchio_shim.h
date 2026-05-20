@@ -149,4 +149,61 @@ void data_joint_velocity_derivatives(const Model& model, Data& data,
                                      double* dv_dq, double* dv_dv,
                                      std::size_t nv);
 
+// ----- RNEA derivatives -----
+// pinocchio::computeRNEADerivatives populates `data.dtau_dq`, `data.dtau_dv`,
+// and `data.M` (the upper triangle of M). We expose only `dtau_dq` and
+// `dtau_dv` — the third partial ∂τ/∂a = M and callers reach it via the CRBA
+// path (`data_mass_matrix_*`).
+void compute_rnea_derivatives(const Model& model, Data& data,
+                              const double* q_ptr, std::size_t nq,
+                              const double* v_ptr, std::size_t nv,
+                              const double* a_ptr, std::size_t nv_a);
+// Each output is nv×nv, column-major.
+void data_rnea_derivatives(const Data& data,
+                           double* dtau_dq, double* dtau_dv,
+                           std::size_t nv);
+
+// ----- ABA derivatives -----
+// pinocchio::computeABADerivatives populates `data.ddq_dq`, `data.ddq_dv`,
+// and `data.Minv` (the inverse mass matrix; we don't expose this — callers
+// invert `mass_matrix()` themselves).
+void compute_aba_derivatives(const Model& model, Data& data,
+                             const double* q_ptr, std::size_t nq,
+                             const double* v_ptr, std::size_t nv,
+                             const double* tau_ptr, std::size_t nv_tau);
+// Each output is nv×nv, column-major.
+void data_aba_derivatives(const Data& data,
+                          double* dddq_dq, double* dddq_dv,
+                          std::size_t nv);
+
+// ----- Joint-acceleration derivatives -----
+// Reuses Pinocchio's `getJointAccelerationDerivatives`, which writes:
+//   v_partial_dq, a_partial_dq, a_partial_dv, a_partial_da
+// We expose only the three acceleration partials (the velocity ∂v/∂q is
+// already covered by `data_joint_velocity_derivatives`).
+// Requires `compute_forward_kinematics_derivatives` to have been called first.
+// Each output is 6×nv, column-major.
+void data_joint_acceleration_derivatives(const Model& model, Data& data,
+                                         std::size_t joint_id, std::uint8_t rf,
+                                         double* da_dq, double* da_dv,
+                                         double* da_da,
+                                         std::size_t nv);
+
+// ----- Frame-velocity derivatives -----
+// Wraps pinocchio::getFrameVelocityDerivatives. Each output is 6×nv,
+// column-major. Requires `compute_forward_kinematics_derivatives` first.
+void data_frame_velocity_derivatives(const Model& model, Data& data,
+                                     std::size_t frame_id, std::uint8_t rf,
+                                     double* dv_dq, double* dv_dv,
+                                     std::size_t nv);
+
+// ----- Frame-acceleration derivatives -----
+// Wraps pinocchio::getFrameAccelerationDerivatives. Each output is 6×nv,
+// column-major. Requires `compute_forward_kinematics_derivatives` first.
+void data_frame_acceleration_derivatives(const Model& model, Data& data,
+                                         std::size_t frame_id, std::uint8_t rf,
+                                         double* da_dq, double* da_dv,
+                                         double* da_da,
+                                         std::size_t nv);
+
 }  // namespace pinocchio_rs::shim

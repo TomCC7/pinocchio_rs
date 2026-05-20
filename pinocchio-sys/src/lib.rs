@@ -5,6 +5,49 @@
 //! `pinocchio-rs`. Every function exposed here is a deliberate, hand-written
 //! `cxx::bridge` entry; we do not auto-generate against Pinocchio's templated
 //! headers.
+//!
+//! # Features
+//!
+//! All features steer build-time Pinocchio discovery; none change the runtime
+//! API surface. At most one of the three may be enabled at a time.
+//!
+//! - **default** — `build.rs` probes `pkg-config` first using whatever
+//!   `PKG_CONFIG_PATH` the user has set; if that fails, it falls back to
+//!   discovering a `pixi` env (`pixi info --json`, then `PIXI_PROJECT_ROOT`).
+//! - **`bundled-pixi`** — pixi env is prepended *before* the user's
+//!   `PKG_CONFIG_PATH`, forcing the pixi-managed Pinocchio to win. Set by
+//!   `pixi.toml`'s cargo tasks to guarantee determinism inside `pixi run`.
+//! - **`system`** — pixi auto-discovery is disabled. Only `PKG_CONFIG_PATH`
+//!   as the user set it is consulted. Use this on ROS / brew / system-install
+//!   environments to prove no pixi fallback is silently rescuing the build.
+//! - **`docs-only`** — `build.rs` skips the `cxx_build` invocation and
+//!   `pkg-config` probe entirely. The bridge declarations still compile to
+//!   an `rlib` so `cargo doc` renders the full surface, but the resulting
+//!   artifact cannot be linked against because the `cxxbridge1$…` symbols
+//!   are never emitted. Only useful for `docs.rs`, which renders docs from
+//!   compiled metadata without producing a runnable binary.
+//!
+//! Activating two of `bundled-pixi`, `system`, `docs-only` simultaneously
+//! produces a `compile_error!` at build time — the combinations are nonsense
+//! and the early failure is more helpful than a silent precedence rule.
+
+// ---- feature-conflict guards ----
+// Pair-conflicts only — there are exactly 3 features and 3 pairs.
+#[cfg(all(feature = "bundled-pixi", feature = "system"))]
+compile_error!(
+    "pinocchio-sys: features `bundled-pixi` and `system` are mutually exclusive. \
+     `bundled-pixi` forces pixi-env discovery; `system` forbids it. Pick one."
+);
+#[cfg(all(feature = "bundled-pixi", feature = "docs-only"))]
+compile_error!(
+    "pinocchio-sys: features `bundled-pixi` and `docs-only` are mutually exclusive. \
+     `docs-only` skips native compilation, so a pixi env is meaningless to it."
+);
+#[cfg(all(feature = "system", feature = "docs-only"))]
+compile_error!(
+    "pinocchio-sys: features `system` and `docs-only` are mutually exclusive. \
+     `docs-only` skips native compilation, so the system probe is meaningless to it."
+);
 
 #[cxx::bridge(namespace = "pinocchio_rs::shim")]
 pub mod ffi {
@@ -144,10 +187,61 @@ pub mod ffi {
             dv_dq: *mut f64, dv_dv: *mut f64,
             nv: usize,
         );
+
+        // ---- RNEA derivatives ----
+        unsafe fn compute_rnea_derivatives(
+            model: &Model, data: Pin<&mut Data>,
+            q_ptr: *const f64, nq: usize,
+            v_ptr: *const f64, nv: usize,
+            a_ptr: *const f64, nv_a: usize,
+        );
+        unsafe fn data_rnea_derivatives(
+            data: &Data,
+            dtau_dq: *mut f64, dtau_dv: *mut f64,
+            nv: usize,
+        );
+
+        // ---- ABA derivatives ----
+        unsafe fn compute_aba_derivatives(
+            model: &Model, data: Pin<&mut Data>,
+            q_ptr: *const f64, nq: usize,
+            v_ptr: *const f64, nv: usize,
+            tau_ptr: *const f64, nv_tau: usize,
+        );
+        unsafe fn data_aba_derivatives(
+            data: &Data,
+            dddq_dq: *mut f64, dddq_dv: *mut f64,
+            nv: usize,
+        );
+
+        // ---- Joint-acceleration derivatives ----
+        // Reads cached state populated by `compute_forward_kinematics_derivatives`.
+        unsafe fn data_joint_acceleration_derivatives(
+            model: &Model, data: Pin<&mut Data>,
+            joint_id: usize, rf: u8,
+            da_dq: *mut f64, da_dv: *mut f64, da_da: *mut f64,
+            nv: usize,
+        );
+
+        // ---- Frame-velocity derivatives ----
+        unsafe fn data_frame_velocity_derivatives(
+            model: &Model, data: Pin<&mut Data>,
+            frame_id: usize, rf: u8,
+            dv_dq: *mut f64, dv_dv: *mut f64,
+            nv: usize,
+        );
+
+        // ---- Frame-acceleration derivatives ----
+        unsafe fn data_frame_acceleration_derivatives(
+            model: &Model, data: Pin<&mut Data>,
+            frame_id: usize, rf: u8,
+            da_dq: *mut f64, da_dv: *mut f64, da_da: *mut f64,
+            nv: usize,
+        );
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "docs-only")))]
 mod tests {
     use super::ffi;
 
